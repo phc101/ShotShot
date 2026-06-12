@@ -102,20 +102,22 @@
   .hbest{color:var(--green); font-weight:600;}
   .cadwrap{margin-top:12px;}
   .cadwrap .cadlab{font-size:10px; letter-spacing:.18em; color:var(--muted);
-    text-transform:uppercase; font-weight:600; margin-bottom:6px;
+    text-transform:uppercase; font-weight:600; margin-bottom:2px;
     display:flex; justify-content:space-between;}
-  .cad{display:flex; gap:3px; align-items:flex-end; height:84px;
+  .cad{display:flex; gap:4px; align-items:flex-end; height:84px;
+    padding-top:18px; box-sizing:content-box;
     border-bottom:1px solid var(--line); position:relative;}
   .cad .avgline{position:absolute; left:0; right:0; border-top:1px dashed var(--muted); opacity:.6;}
   .cad .cbar{flex:1; min-width:5px; border-radius:3px 3px 0 0; background:var(--panel2);
     border:1px solid var(--line); border-bottom:0; position:relative;}
   .cad .cbar.best{background:rgba(79,198,120,.25); border-color:var(--green);}
   .cad .cbar.worst{background:rgba(226,80,60,.2); border-color:var(--red);}
-  .cad .cbar i{position:absolute; top:-15px; left:50%; transform:translateX(-50%);
-    font-style:normal; font-family:'IBM Plex Mono',monospace; font-size:9px; color:var(--muted);}
+  .cad .cbar i{position:absolute; top:-14px; left:50%; transform:translateX(-50%);
+    font-style:normal; font-family:'IBM Plex Mono',monospace; font-size:9px;
+    color:var(--muted); white-space:nowrap;}
   .cad .cbar.best i{color:var(--green);}
   .cad .cbar.worst i{color:var(--red);}
-  .cadmini .cad{height:48px;}
+  .cadmini .cad{height:44px; padding-top:4px;}
   .cadmini{margin-top:8px;}
   .footnote{font-size:11px; color:var(--muted); text-align:center; line-height:1.5;}
 </style>
@@ -292,16 +294,18 @@ function cadenceHTML(splits,mini){
   if(splits.length<1)return'';
   const max=Math.max(...splits), min=Math.min(...splits);
   const avg=splits.reduce((a,b)=>a+b,0)/splits.length;
-  const showLab=!mini&&splits.length<=12;
+  // skala min–max z podłogą 18% — uwypukla różnice rytmu nawet przy zbliżonych splitach
+  const scale=v=>max===min?70:18+82*(v-min)/(max-min);
+  // etykiety: wszystkie gdy mało słupków, inaczej tylko najlepszy i najgorszy
+  const labAll=!mini&&splits.length<=8;
   const bars=splits.map(s=>{
-    const h=Math.max(8,Math.round(s/max*100));
     const cls=(splits.length>1&&s===min)?'best':(splits.length>1&&s===max)?'worst':'';
-    return `<div class="cbar ${cls}" style="height:${h}%">${showLab?'<i>'+s.toFixed(2)+'</i>':''}</div>`;
+    const lab=(labAll||(!mini&&cls))?'<i>'+s.toFixed(2)+'</i>':'';
+    return `<div class="cbar ${cls}" style="height:${scale(s).toFixed(1)}%">${lab}</div>`;
   }).join('');
-  const avgPct=Math.round(avg/max*100);
   return `<div class="cadwrap ${mini?'cadmini':''}">
     ${mini?'':'<div class="cadlab"><span>Kadencja (splity)</span><span>śr. '+avg.toFixed(2)+' s</span></div>'}
-    <div class="cad"><div class="avgline" style="bottom:${avgPct}%"></div>${bars}</div>
+    <div class="cad"><div class="avgline" style="bottom:${scale(avg).toFixed(1)}%"></div>${bars}</div>
   </div>`;
 }
 
