@@ -65,6 +65,10 @@
   .srow output{font-family:'IBM Plex Mono',monospace; font-size:13px; min-width:64px; text-align:right; color:var(--accent); font-weight:600;}
   input[type=range]{flex:1.4; accent-color:var(--accent); height:28px;}
   input[type=checkbox]{width:20px; height:20px; accent-color:var(--accent);}
+  .calbtn{border:1px solid var(--accent); background:transparent; color:var(--accent);
+    font:inherit; font-weight:700; font-size:12px; letter-spacing:.12em;
+    padding:9px 18px; border-radius:8px;}
+  .calbtn:active{background:var(--accent); color:#16100a;}
 
   .splits{background:var(--panel); border:1px solid var(--line); border-radius:14px; padding:10px 14px;}
   .splits h3{margin:4px 0 8px; font-size:11px; letter-spacing:.2em; color:var(--muted); text-transform:uppercase;}
@@ -75,6 +79,27 @@
   td{text-align:right; padding:5px 2px; border-top:1px solid var(--line); font-variant-numeric:tabular-nums;}
   td.fast{color:var(--green);}
   .empty{color:var(--muted); font-size:12px; text-align:center; padding:14px 0;}
+  .histhead{display:flex; align-items:center; justify-content:space-between;}
+  .histbtns{display:flex; gap:8px;}
+  .minibtn{border:1px solid var(--line); background:transparent; color:var(--muted);
+    font:inherit; font-size:11px; font-weight:700; letter-spacing:.1em;
+    padding:6px 12px; border-radius:7px;}
+  .minibtn:active{border-color:var(--accent); color:var(--accent);}
+  .minibtn.danger:active{border-color:var(--red); color:var(--red);}
+  .hrow{border-top:1px solid var(--line); padding:9px 0;}
+  .hrow:first-child{border-top:0;}
+  .hmain{display:flex; align-items:center; gap:8px; font-family:'IBM Plex Mono',monospace;
+    font-size:13px; font-variant-numeric:tabular-nums;}
+  .hmain .hdate{flex:1; font-family:'Chakra Petch',sans-serif; font-size:11px; color:var(--muted);}
+  .hmain .htag{font-size:9px; font-weight:700; letter-spacing:.1em; color:var(--accent);
+    border:1px solid var(--accent-dim); border-radius:4px; padding:2px 5px;
+    font-family:'Chakra Petch',sans-serif;}
+  .hmain .htot{font-weight:600; color:var(--ink);}
+  .hmain .hdel{border:0; background:transparent; color:var(--muted); font-size:16px; padding:2px 6px;}
+  .hdetail{display:none; font-family:'IBM Plex Mono',monospace; font-size:11px;
+    color:var(--muted); padding:6px 2px 0; line-height:1.7; word-break:break-word;}
+  .hrow.open .hdetail{display:block;}
+  .hbest{color:var(--green); font-weight:600;}
   .footnote{font-size:11px; color:var(--muted); text-align:center; line-height:1.5;}
 </style>
 </head>
@@ -116,6 +141,10 @@
     <output id="thrOut">-38 dB</output>
   </div>
   <div class="srow">
+    <label>Auto-kalibracja<span>2 s ciszy → próg ustawiony nad szum tła</span></label>
+    <button class="calbtn" id="calBtn">AUTO</button>
+  </div>
+  <div class="srow">
     <label>Min. odstęp (lockout)<span>blokada podwójnej detekcji / echa</span></label>
     <input type="range" id="lockout" min="60" max="500" step="10" value="150">
     <output id="lockoutOut">150 ms</output>
@@ -141,6 +170,17 @@
   </table>
 </div>
 
+<div class="splits">
+  <div class="histhead">
+    <h3>Pamięć serii</h3>
+    <div class="histbtns">
+      <button class="minibtn" id="csvBtn">CSV</button>
+      <button class="minibtn danger" id="clearBtn">WYCZYŚĆ</button>
+    </div>
+  </div>
+  <div id="histList"><div class="empty">Brak zapisanych serii</div></div>
+</div>
+
 <p class="footnote">SUCHO: wykrywa kliknięcie iglicy (telefon blisko broni).<br>
 OSTRO: wysoki próg — telefon w kieszeni/na pasie, ochrona słuchu obowiązkowa.</p>
 
@@ -153,7 +193,7 @@ let beepTime=0;             // ctx.currentTime końca sygnału startu
 let lastShotT=-1;           // czas ostatniego strzału (ctx clock)
 let shots=[];               // czasy od beep
 let armTimer=null, parTimer=null, uiRaf=null;
-let curDb=-100, peakHold=0;
+let curDb=-100, peakHold=0, noiseDb=-70, calibrating=false, calPeak=-100;
 
 const PRESETS={dry:{thr:-38,lock:150}, live:{thr:-14,lock:250}};
 let mode='dry';
@@ -192,9 +232,16 @@ function onAudio(ev){
   }
   curDb=peak>0?20*Math.log10(peak):-100;
 
+  if(calibrating && curDb>calPeak) calPeak=curDb;
+
+  // śledzenie tła: wolna średnia z poziomów PONIŻEJ progu
+  if(curDb<thrDb) noiseDb=noiseDb*0.97+curDb*0.03;
+
   if(state!=='running'||hitIdx<0) return;
+  // strzał = impuls: musi wystawać min. 10 dB ponad tło (odcina jednostajny hałas)
+  if(curDb < noiseDb+10) return;
   const t=ev.playbackTime - (n-hitIdx)/sr;     // przybliżony czas próbki
-  if(t<beepTime+0.12) return;                  // ignoruj własny beep
+  if(t<beepTime+0.15) return;                  // ignoruj własny beep
   const lock=parseFloat($('lockout').value)/1000;
   if(lastShotT>0 && t-lastShotT<lock) return;
   lastShotT=t;
@@ -266,14 +313,88 @@ async function start(){
 
 function stop(){
   clearTimeout(armTimer); clearTimeout(parTimer);
+  const wasRunning=state==='running';
   state='idle';
   $('mainBtn').textContent='START'; $('mainBtn').classList.remove('stop');
-  $('status').textContent=shots.length?'SERIA ZAKOŃCZONA':'GOTOWY — WCIŚNIJ START';
+  $('status').textContent=shots.length?'SERIA ZAKOŃCZONA — ZAPISANO':'GOTOWY — WCIŚNIJ START';
   $('status').className='status';
   try{wakeLock?.release();}catch(e){}
+  if(wasRunning&&shots.length) saveString();
 }
 
 $('mainBtn').onclick=()=>{state==='idle'?start():stop();};
+
+// ---------- pamięć serii (localStorage) ----------
+const STORE='shotTimerStrings';
+function loadHist(){try{return JSON.parse(localStorage.getItem(STORE))||[];}catch(e){return[];}}
+function saveString(){
+  const h=loadHist();
+  h.unshift({ts:Date.now(), mode, shots:shots.slice()});
+  if(h.length>200)h.length=200;
+  localStorage.setItem(STORE,JSON.stringify(h));
+  renderHist();
+}
+function delString(i){
+  const h=loadHist(); h.splice(i,1);
+  localStorage.setItem(STORE,JSON.stringify(h));
+  renderHist();
+}
+function renderHist(){
+  const h=loadHist(), box=$('histList'); box.innerHTML='';
+  if(!h.length){box.innerHTML='<div class="empty">Brak zapisanych serii</div>';return;}
+  h.forEach((s,i)=>{
+    const d=new Date(s.ts);
+    const dt=d.toLocaleDateString('pl-PL',{day:'2-digit',month:'2-digit'})+' '
+            +d.toLocaleTimeString('pl-PL',{hour:'2-digit',minute:'2-digit'});
+    const tot=s.shots[s.shots.length-1];
+    const sp=s.shots.map((t,j)=>j?t-s.shots[j-1]:null).filter(x=>x!==null);
+    const best=sp.length?Math.min(...sp):null;
+    const row=document.createElement('div'); row.className='hrow';
+    row.innerHTML=
+      `<div class="hmain">
+        <span class="htag">${s.mode==='dry'?'SUCHO':'OSTRO'}</span>
+        <span class="hdate">${dt}</span>
+        <span>${s.shots.length}×</span>
+        <span class="htot">${tot.toFixed(2)}</span>
+        <button class="hdel">✕</button>
+      </div>
+      <div class="hdetail">1. strzał: ${s.shots[0].toFixed(2)}
+        ${best!==null?' · najszybszy split: <span class="hbest">'+best.toFixed(2)+'</span>':''}
+        ${sp.length?' · śr. split: '+(sp.reduce((a,b)=>a+b,0)/sp.length).toFixed(2):''}<br>
+        czasy: ${s.shots.map(t=>t.toFixed(2)).join(' / ')}
+        ${sp.length?'<br>splity: '+sp.map(x=>x===best?'<span class="hbest">'+x.toFixed(2)+'</span>':x.toFixed(2)).join(' / '):''}</div>`;
+    row.querySelector('.hmain').onclick=e=>{
+      if(e.target.classList.contains('hdel'))return;
+      row.classList.toggle('open');
+    };
+    row.querySelector('.hdel').onclick=()=>{
+      if(confirm('Usunąć tę serię?'))delString(i);
+    };
+    box.appendChild(row);
+  });
+}
+$('clearBtn').onclick=()=>{
+  if(confirm('Usunąć całą pamięć serii?')){
+    localStorage.removeItem(STORE); renderHist();
+  }
+};
+$('csvBtn').onclick=()=>{
+  const h=loadHist();
+  if(!h.length){alert('Brak serii do eksportu');return;}
+  let csv='data;tryb;nr_strzalu;czas_s;split_s\n';
+  h.forEach(s=>{
+    const d=new Date(s.ts).toLocaleString('pl-PL');
+    s.shots.forEach((t,j)=>{
+      const sp=j?(t-s.shots[j-1]).toFixed(3):'';
+      csv+=`${d};${s.mode==='dry'?'sucho':'ostro'};${j+1};${t.toFixed(3)};${sp}\n`;
+    });
+  });
+  const a=document.createElement('a');
+  a.href=URL.createObjectURL(new Blob([csv],{type:'text/csv'}));
+  a.download='shot-timer-serie.csv';
+  a.click();
+};
+renderHist();
 
 // ---------- UI / pętla ----------
 function uiLoop(){
@@ -322,6 +443,23 @@ function setMode(m){
 }
 $('modeDry').onclick=()=>setMode('dry');
 $('modeLive').onclick=()=>setMode('live');
+
+$('calBtn').onclick=async()=>{
+  if(!(await ensureAudio()))return;
+  await ctx.resume();
+  calibrating=true; calPeak=-100;
+  $('calBtn').textContent='CISZA…';
+  setTimeout(()=>{
+    calibrating=false;
+    // próg = najgłośniejszy moment tła + 12 dB zapasu
+    const thr=Math.max(-60,Math.min(-5,Math.round(calPeak+12)));
+    $('thr').value=thr;
+    $('thr').dispatchEvent(new Event('input'));
+    noiseDb=calPeak;
+    $('calBtn').textContent='AUTO';
+    if(navigator.vibrate) navigator.vibrate(60);
+  },2000);
+};
 
 // pierwszy dotyk ekranu = aktywacja audio (wymóg przeglądarki)
 document.body.addEventListener('touchstart',()=>{ensureAudio().then(()=>ctx&&ctx.resume());},{once:true});
