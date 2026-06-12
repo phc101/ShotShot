@@ -1,0 +1,331 @@
+<!DOCTYPE html>
+<html lang="pl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<meta name="theme-color" content="#14181C">
+<title>Shot Timer — sucho / ostro</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@400;500;600;700&family=IBM+Plex+Mono:wght@500;600&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --bg:#14181C; --panel:#1B2127; --panel2:#222A31; --line:#2C353D;
+    --ink:#E9EEF2; --muted:#7E8A94; --accent:#FF8A1E; --accent-dim:#8a5113;
+    --green:#4FC678; --red:#E2503C;
+  }
+  *{box-sizing:border-box; -webkit-tap-highlight-color:transparent;}
+  html,body{margin:0; padding:0; background:var(--bg); color:var(--ink);
+    font-family:'Chakra Petch',system-ui,sans-serif; min-height:100%;}
+  body{display:flex; flex-direction:column; max-width:480px; margin:0 auto;
+    padding:14px 14px calc(20px + env(safe-area-inset-bottom)); gap:12px; user-select:none;}
+
+  header{display:flex; align-items:center; justify-content:space-between; padding:2px 2px 0;}
+  .brand{font-weight:700; letter-spacing:.14em; font-size:13px;}
+  .brand b{color:var(--accent);}
+  .mode{display:flex; border:1px solid var(--line); border-radius:8px; overflow:hidden;}
+  .mode button{background:transparent; border:0; color:var(--muted); font:inherit;
+    font-size:12px; font-weight:600; letter-spacing:.08em; padding:7px 12px;}
+  .mode button.on{background:var(--accent); color:#16100a;}
+
+  .clock{background:var(--panel); border:1px solid var(--line); border-radius:14px;
+    padding:18px 16px 14px; text-align:center; position:relative; overflow:hidden;}
+  .clock .status{font-size:11px; letter-spacing:.22em; color:var(--muted); font-weight:600;
+    text-transform:uppercase;}
+  .clock .status.armed{color:var(--accent);}
+  .clock .status.live{color:var(--green);}
+  .time{font-family:'IBM Plex Mono',monospace; font-weight:600; font-size:64px;
+    line-height:1.05; font-variant-numeric:tabular-nums; margin:6px 0 2px;}
+  .time small{font-size:30px; color:var(--muted);}
+  .subrow{display:flex; justify-content:space-around; margin-top:8px; font-family:'IBM Plex Mono',monospace;}
+  .subrow div{font-size:12px; color:var(--muted);}
+  .subrow b{display:block; font-size:20px; color:var(--ink); font-weight:600; font-variant-numeric:tabular-nums;}
+
+  .bigbtn{border:0; border-radius:14px; padding:20px; font:inherit; font-weight:700;
+    font-size:20px; letter-spacing:.16em; width:100%; color:#16100a; background:var(--accent);
+    box-shadow:0 4px 0 var(--accent-dim); transition:transform .05s;}
+  .bigbtn:active{transform:translateY(3px); box-shadow:0 1px 0 var(--accent-dim);}
+  .bigbtn.stop{background:var(--red); box-shadow:0 4px 0 #7c2418; color:#fff;}
+  .bigbtn:disabled{opacity:.5;}
+
+  .meterbox{background:var(--panel); border:1px solid var(--line); border-radius:14px; padding:12px 14px;}
+  .meterbox .lab{display:flex; justify-content:space-between; font-size:11px; color:var(--muted);
+    letter-spacing:.1em; text-transform:uppercase; font-weight:600; margin-bottom:8px;}
+  .meter{position:relative; height:26px; background:var(--panel2); border-radius:6px; overflow:hidden;}
+  .meter .fill{position:absolute; left:0; top:0; bottom:0; width:0%;
+    background:linear-gradient(90deg,#3a8a5c,#4FC678 60%,#FFC04D 85%,#FF8A1E);}
+  .meter .thr{position:absolute; top:-2px; bottom:-2px; width:3px; background:var(--accent);
+    box-shadow:0 0 6px rgba(255,138,30,.8);}
+  .meter .peakflash{position:absolute; inset:0; background:rgba(255,138,30,.35); opacity:0; transition:opacity .25s;}
+
+  .settings{background:var(--panel); border:1px solid var(--line); border-radius:14px; padding:4px 14px;}
+  .srow{display:flex; align-items:center; gap:10px; padding:11px 0; border-bottom:1px solid var(--line);}
+  .srow:last-child{border-bottom:0;}
+  .srow label{flex:1; font-size:13px; color:var(--ink);}
+  .srow label span{display:block; font-size:11px; color:var(--muted);}
+  .srow output{font-family:'IBM Plex Mono',monospace; font-size:13px; min-width:64px; text-align:right; color:var(--accent); font-weight:600;}
+  input[type=range]{flex:1.4; accent-color:var(--accent); height:28px;}
+  input[type=checkbox]{width:20px; height:20px; accent-color:var(--accent);}
+
+  .splits{background:var(--panel); border:1px solid var(--line); border-radius:14px; padding:10px 14px;}
+  .splits h3{margin:4px 0 8px; font-size:11px; letter-spacing:.2em; color:var(--muted); text-transform:uppercase;}
+  table{width:100%; border-collapse:collapse; font-family:'IBM Plex Mono',monospace; font-size:14px;}
+  th{font-family:'Chakra Petch',sans-serif; font-size:10px; letter-spacing:.15em; color:var(--muted);
+    text-align:right; padding:4px 2px; text-transform:uppercase; font-weight:600;}
+  th:first-child, td:first-child{text-align:left; color:var(--muted);}
+  td{text-align:right; padding:5px 2px; border-top:1px solid var(--line); font-variant-numeric:tabular-nums;}
+  td.fast{color:var(--green);}
+  .empty{color:var(--muted); font-size:12px; text-align:center; padding:14px 0;}
+  .footnote{font-size:11px; color:var(--muted); text-align:center; line-height:1.5;}
+</style>
+</head>
+<body>
+
+<header>
+  <div class="brand">SHOT<b>TIMER</b></div>
+  <div class="mode">
+    <button id="modeDry" class="on">SUCHO</button>
+    <button id="modeLive">OSTRO</button>
+  </div>
+</header>
+
+<div class="clock">
+  <div class="status" id="status">GOTOWY — WCIŚNIJ START</div>
+  <div class="time" id="bigTime">0.00</div>
+  <div class="subrow">
+    <div>1. STRZAŁ<b id="firstShot">—</b></div>
+    <div>STRZAŁY<b id="shotCount">0</b></div>
+    <div>OST. SPLIT<b id="lastSplit">—</b></div>
+  </div>
+</div>
+
+<button class="bigbtn" id="mainBtn">START</button>
+
+<div class="meterbox">
+  <div class="lab"><span>Poziom mikrofonu</span><span id="dbLabel">— dB</span></div>
+  <div class="meter">
+    <div class="fill" id="meterFill"></div>
+    <div class="thr" id="thrMark"></div>
+    <div class="peakflash" id="peakFlash"></div>
+  </div>
+</div>
+
+<div class="settings">
+  <div class="srow">
+    <label>Czułość (próg detekcji)<span>strzał liczony powyżej progu</span></label>
+    <input type="range" id="thr" min="-60" max="-5" step="1" value="-38">
+    <output id="thrOut">-38 dB</output>
+  </div>
+  <div class="srow">
+    <label>Min. odstęp (lockout)<span>blokada podwójnej detekcji / echa</span></label>
+    <input type="range" id="lockout" min="60" max="500" step="10" value="150">
+    <output id="lockoutOut">150 ms</output>
+  </div>
+  <div class="srow">
+    <label>Losowe opóźnienie startu<span>zakres przed sygnałem BEEP</span></label>
+    <input type="range" id="delayMax" min="1" max="6" step="0.5" value="4">
+    <output id="delayOut">1–4 s</output>
+  </div>
+  <div class="srow">
+    <label>Par time<span>drugi sygnał po zadanym czasie</span></label>
+    <input type="checkbox" id="parOn">
+    <input type="range" id="par" min="1" max="20" step="0.5" value="5">
+    <output id="parOut">5.0 s</output>
+  </div>
+</div>
+
+<div class="splits">
+  <h3>Przebieg serii</h3>
+  <table>
+    <thead><tr><th>#</th><th>Czas</th><th>Split</th></tr></thead>
+    <tbody id="splitBody"><tr><td colspan="3" class="empty">Brak strzałów — wciśnij START</td></tr></tbody>
+  </table>
+</div>
+
+<p class="footnote">SUCHO: wykrywa kliknięcie iglicy (telefon blisko broni).<br>
+OSTRO: wysoki próg — telefon w kieszeni/na pasie, ochrona słuchu obowiązkowa.</p>
+
+<script>
+(()=>{
+const $=id=>document.getElementById(id);
+let ctx=null, micNode=null, proc=null, stream=null, wakeLock=null;
+let state='idle';           // idle | armed | running
+let beepTime=0;             // ctx.currentTime końca sygnału startu
+let lastShotT=-1;           // czas ostatniego strzału (ctx clock)
+let shots=[];               // czasy od beep
+let armTimer=null, parTimer=null, uiRaf=null;
+let curDb=-100, peakHold=0;
+
+const PRESETS={dry:{thr:-38,lock:150}, live:{thr:-14,lock:250}};
+let mode='dry';
+
+// ---------- audio ----------
+async function ensureAudio(){
+  if(ctx) return true;
+  try{
+    ctx=new (window.AudioContext||window.webkitAudioContext)();
+    stream=await navigator.mediaDevices.getUserMedia({audio:{
+      echoCancellation:false, noiseSuppression:false, autoGainControl:false}});
+    micNode=ctx.createMediaStreamSource(stream);
+    proc=ctx.createScriptProcessor(256,1,1);
+    const silent=ctx.createGain(); silent.gain.value=0;
+    micNode.connect(proc); proc.connect(silent); silent.connect(ctx.destination);
+    proc.onaudioprocess=onAudio;
+    return true;
+  }catch(e){
+    $('status').textContent='BRAK DOSTĘPU DO MIKROFONU';
+    $('status').className='status';
+    alert('Nie udało się uruchomić mikrofonu.\\nZezwól na dostęp do mikrofonu i otwórz stronę przez HTTPS lub plik w Chrome.\\n\\n'+e.message);
+    ctx=null; return false;
+  }
+}
+
+function onAudio(ev){
+  const buf=ev.inputBuffer.getChannelData(0);
+  const n=buf.length, sr=ev.inputBuffer.sampleRate;
+  const thrDb=parseFloat($('thr').value);
+  const thrLin=Math.pow(10,thrDb/20);
+  let peak=0, hitIdx=-1;
+  for(let i=0;i<n;i++){
+    const a=Math.abs(buf[i]);
+    if(a>peak) peak=a;
+    if(hitIdx<0 && a>=thrLin) hitIdx=i;
+  }
+  curDb=peak>0?20*Math.log10(peak):-100;
+
+  if(state!=='running'||hitIdx<0) return;
+  const t=ev.playbackTime - (n-hitIdx)/sr;     // przybliżony czas próbki
+  if(t<beepTime+0.12) return;                  // ignoruj własny beep
+  const lock=parseFloat($('lockout').value)/1000;
+  if(lastShotT>0 && t-lastShotT<lock) return;
+  lastShotT=t;
+  registerShot(t-beepTime);
+}
+
+function beep(freq=2300,dur=0.3){
+  const o=ctx.createOscillator(), g=ctx.createGain();
+  o.type='square'; o.frequency.value=freq;
+  g.gain.setValueAtTime(0.5,ctx.currentTime);
+  g.gain.setValueAtTime(0.0001,ctx.currentTime+dur);
+  o.connect(g); g.connect(ctx.destination);
+  o.start(); o.stop(ctx.currentTime+dur+0.02);
+  return ctx.currentTime+dur;
+}
+
+// ---------- logika ----------
+function registerShot(t){
+  shots.push(t);
+  if(navigator.vibrate) navigator.vibrate(30);
+  $('peakFlash').style.opacity=1;
+  setTimeout(()=>$('peakFlash').style.opacity=0,120);
+  renderShots();
+}
+
+function fmt(t){return t.toFixed(2);}
+
+function renderShots(){
+  $('shotCount').textContent=shots.length;
+  $('firstShot').textContent=shots.length?fmt(shots[0]):'—';
+  const ls=shots.length>1?shots[shots.length-1]-shots[shots.length-2]:null;
+  $('lastSplit').textContent=ls!==null?fmt(ls):'—';
+  const tb=$('splitBody'); tb.innerHTML='';
+  if(!shots.length){tb.innerHTML='<tr><td colspan="3" class="empty">Brak strzałów — wciśnij START</td></tr>';return;}
+  let minSplit=Infinity;
+  const splits=shots.map((t,i)=>i?t-shots[i-1]:null);
+  splits.forEach(s=>{if(s!==null&&s<minSplit)minSplit=s;});
+  shots.forEach((t,i)=>{
+    const tr=document.createElement('tr');
+    const s=splits[i];
+    tr.innerHTML=`<td>${i+1}</td><td>${fmt(t)}</td>`+
+      `<td class="${s!==null&&s===minSplit?'fast':''}">${s!==null?fmt(s):'—'}</td>`;
+    tb.appendChild(tr);
+  });
+}
+
+async function start(){
+  if(!(await ensureAudio()))return;
+  await ctx.resume();
+  try{wakeLock=await navigator.wakeLock?.request('screen');}catch(e){}
+  shots=[]; lastShotT=-1; renderShots();
+  state='armed';
+  $('mainBtn').textContent='STOP'; $('mainBtn').classList.add('stop');
+  $('status').textContent='UWAGA… CZEKAJ NA SYGNAŁ';
+  $('status').className='status armed';
+  const max=parseFloat($('delayMax').value);
+  const delay=1+Math.random()*Math.max(0.1,max-1);
+  armTimer=setTimeout(()=>{
+    beepTime=beep();
+    state='running';
+    $('status').textContent='OGIEŃ! — POMIAR TRWA';
+    $('status').className='status live';
+    if($('parOn').checked){
+      const par=parseFloat($('par').value);
+      parTimer=setTimeout(()=>{if(state==='running')beep(1400,0.4);},par*1000);
+    }
+  },delay*1000);
+}
+
+function stop(){
+  clearTimeout(armTimer); clearTimeout(parTimer);
+  state='idle';
+  $('mainBtn').textContent='START'; $('mainBtn').classList.remove('stop');
+  $('status').textContent=shots.length?'SERIA ZAKOŃCZONA':'GOTOWY — WCIŚNIJ START';
+  $('status').className='status';
+  try{wakeLock?.release();}catch(e){}
+}
+
+$('mainBtn').onclick=()=>{state==='idle'?start():stop();};
+
+// ---------- UI / pętla ----------
+function uiLoop(){
+  // zegar
+  if(state==='running'&&ctx){
+    const t=Math.max(0,ctx.currentTime-beepTime);
+    $('bigTime').innerHTML=t<60?fmt(t):Math.floor(t/60)+':'+fmt(t%60).padStart(5,'0');
+  }else if(state==='idle'&&shots.length){
+    $('bigTime').textContent=fmt(shots[shots.length-1]);
+  }else if(state!=='running'&&!shots.length){
+    $('bigTime').textContent='0.00';
+  }
+  // miernik
+  const minDb=-70, span=70;
+  const pct=Math.max(0,Math.min(100,(curDb-minDb)/span*100));
+  if(pct>peakHold)peakHold=pct; else peakHold=Math.max(pct,peakHold-2.2);
+  $('meterFill').style.width=peakHold+'%';
+  $('dbLabel').textContent=(curDb<=-99?'—':curDb.toFixed(0))+' dB';
+  const thrPct=Math.max(0,Math.min(100,(parseFloat($('thr').value)-minDb)/span*100));
+  $('thrMark').style.left=thrPct+'%';
+  uiRaf=requestAnimationFrame(uiLoop);
+}
+uiLoop();
+
+// ---------- ustawienia ----------
+function bindRange(id,outId,fmtFn){
+  const el=$(id);
+  const upd=()=>$(outId).textContent=fmtFn(parseFloat(el.value));
+  el.addEventListener('input',upd); upd();
+}
+bindRange('thr','thrOut',v=>v+' dB');
+bindRange('lockout','lockoutOut',v=>v+' ms');
+bindRange('delayMax','delayOut',v=>'1–'+v+' s');
+bindRange('par','parOut',v=>v.toFixed(1)+' s');
+
+function setMode(m){
+  mode=m;
+  $('modeDry').classList.toggle('on',m==='dry');
+  $('modeLive').classList.toggle('on',m==='live');
+  $('thr').value=PRESETS[m].thr;
+  $('lockout').value=PRESETS[m].lock;
+  $('thr').dispatchEvent(new Event('input'));
+  $('lockout').dispatchEvent(new Event('input'));
+  // uruchom mikrofon od razu, żeby skalibrować czułość
+  ensureAudio().then(()=>ctx&&ctx.resume());
+}
+$('modeDry').onclick=()=>setMode('dry');
+$('modeLive').onclick=()=>setMode('live');
+
+// pierwszy dotyk ekranu = aktywacja audio (wymóg przeglądarki)
+document.body.addEventListener('touchstart',()=>{ensureAudio().then(()=>ctx&&ctx.resume());},{once:true});
+})();
+</script>
+</body>
+</html>
