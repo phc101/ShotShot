@@ -179,6 +179,12 @@
     <input type="range" id="par" min="1" max="20" step="0.5" value="5">
     <output id="parOut">5.0 s</output>
   </div>
+  <div class="srow">
+    <label>Tryb dry-fire<span>ignoruje odgłos zamka po strzale (okno)</span></label>
+    <input type="checkbox" id="dryOn" checked>
+    <input type="range" id="blank" min="0.4" max="2" step="0.1" value="1">
+    <output id="blankOut">1.0 s</output>
+  </div>
 </div>
 
 <div class="splits">
@@ -262,7 +268,10 @@ function onAudio(ev){
   if(curDb < noiseDb+10) return;
   const t=ev.playbackTime - (n-hitIdx)/sr;     // przybliżony czas próbki
   if(t<beepTime+0.15) return;                  // ignoruj własny beep
-  const lock=parseFloat($('lockout').value)/1000;
+  // okno wygaszania: w trybie dry-fire połyka odgłos zamka (tył+przód) po strzale
+  const lock=$('dryOn').checked
+    ? parseFloat($('blank').value)
+    : parseFloat($('lockout').value)/1000;
   if(lastShotT>0 && t-lastShotT<lock) return;
   lastShotT=t;
   registerShot(t-beepTime);
@@ -471,6 +480,7 @@ bindRange('thr','thrOut',v=>v+' dB');
 bindRange('lockout','lockoutOut',v=>v+' ms');
 bindRange('delayMax','delayOut',v=>'1–'+v+' s');
 bindRange('par','parOut',v=>v.toFixed(1)+' s');
+bindRange('blank','blankOut',v=>v.toFixed(1)+' s');
 
 function setMode(m){
   mode=m;
@@ -480,6 +490,9 @@ function setMode(m){
   $('lockout').value=PRESETS[m].lock;
   $('thr').dispatchEvent(new Event('input'));
   $('lockout').dispatchEvent(new Event('input'));
+  // tryb dry-fire (okno wygaszania zamka) sensowny tylko na sucho;
+  // na ostro szybkie splity muszą być liczone, więc wyłączamy
+  $('dryOn').checked = (m==='dry');
   // uruchom mikrofon od razu, żeby skalibrować czułość
   ensureAudio().then(()=>ctx&&ctx.resume());
 }
